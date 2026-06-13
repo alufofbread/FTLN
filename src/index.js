@@ -452,7 +452,6 @@ async function handleInteraction(interaction, client) {
     const members = upsertMembers([{ username, displayName }]);
     await interaction.reply({
       content: `@${username}, added to the live watchlist.`,
-      ephemeral: true,
     });
     return;
   }

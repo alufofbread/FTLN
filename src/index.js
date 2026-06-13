@@ -20,6 +20,42 @@ const CHECK_INTERVAL_SECONDS = Math.max(
 const MEMBERS_PATH = path.join(process.cwd(), "members.json");
 const CONFIG_PATH = path.join(process.cwd(), "config.json");
 
+const CREATOR_AUTOCOMPLETE_USERNAMES = [
+  "randomrapid",
+  "danielgoofyahh_",
+  "axelae.ae",
+  "tobymalton0",
+  "rl_warrior",
+  "batmncon",
+  "fasttrack_mini",
+  "kyro.rll",
+  "ryftago",
+  "jordanriley96",
+  "rl_sam4",
+  "rozza_c9",
+  "lux.killa",
+  "lils.0007",
+  "oo8ray",
+  "j28.jg",
+  "trexidov",
+  "lexlexi.0x",
+  "egarnerjones2",
+  "tee_es_on_tiktok",
+  "soultrapped_",
+  "kruze.rl",
+  "flkcs",
+  "evans_fn",
+  "dreadrl",
+  "quixc_god",
+  "glowing.jellyfish1",
+  "1_1_1_382",
+  "jxrds_o",
+  "b0tsquad_",
+  "wnt8d_",
+  "extraa__aa",
+  "kronosfvv._",
+];
+
 const state = new Map();
 
 function requiredEnv(name) {
@@ -169,6 +205,28 @@ function formatMembers(members) {
         : `- ${member.displayName} (@${member.username})`
     )
     .join("\n");
+}
+
+function getCreatorAutocompleteChoices(focusedValue, mode = "add") {
+  const query = cleanUsername(focusedValue).toLowerCase();
+  const trackedMembers = loadMembers();
+  const trackedUsernames = new Set(
+    trackedMembers.map((member) => member.username.toLowerCase())
+  );
+  const usernames =
+    mode === "remove"
+      ? trackedMembers.map((member) => member.username)
+      : CREATOR_AUTOCOMPLETE_USERNAMES.filter(
+          (username) => !trackedUsernames.has(username.toLowerCase())
+        );
+
+  return usernames
+    .filter((username) => username.toLowerCase().includes(query))
+    .slice(0, 25)
+    .map((username) => ({
+      name: `@${username}`,
+      value: username,
+    }));
 }
 
 function pickFirst(...values) {
@@ -376,6 +434,7 @@ function getCommands() {
         option
           .setName("username")
           .setDescription("TikTok username, with or without @")
+          .setAutocomplete(true)
           .setRequired(true)
       )
       .addStringOption((option) =>
@@ -402,6 +461,7 @@ function getCommands() {
         option
           .setName("username")
           .setDescription("TikTok username, with or without @")
+          .setAutocomplete(true)
           .setRequired(true)
       ),
     new SlashCommandBuilder()
@@ -430,6 +490,26 @@ async function registerCommands(client) {
 }
 
 async function handleInteraction(interaction, client) {
+  if (interaction.isAutocomplete()) {
+    const focusedOption = interaction.options.getFocused(true);
+
+    if (
+      focusedOption.name === "username" &&
+      ["addmember", "removemember"].includes(interaction.commandName)
+    ) {
+      await interaction.respond(
+        getCreatorAutocompleteChoices(
+          focusedOption.value,
+          interaction.commandName === "removemember" ? "remove" : "add"
+        )
+      );
+    } else {
+      await interaction.respond([]);
+    }
+
+    return;
+  }
+
   if (!interaction.isChatInputCommand()) {
     return;
   }

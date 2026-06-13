@@ -1,0 +1,22 @@
+{
+  "name": "ft-notifier",
+  "version": "1.0.0",
+  "description": "Discord bot that notifies a channel when agency members go live on TikTok.",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "check": "node --check src/index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "type": "commonjs",
+  "dependencies": {
+    "discord.js": "^14.26.4",
+    "dotenv": "^17.4.2",
+    "tiktok-live-connector": "^2.3.0-beta1"
+  }
+}

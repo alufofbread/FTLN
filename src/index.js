@@ -57,6 +57,7 @@ const CREATOR_AUTOCOMPLETE_USERNAMES = [
 ];
 
 const state = new Map();
+let checkAllMembersInProgress = false;
 
 function requiredEnv(name) {
   const value = process.env[name];
@@ -262,7 +263,7 @@ function getLiveId(roomInfo, username) {
       room.roomId ||
       room.liveRoom?.roomId ||
       room.liveRoom?.id ||
-      `${username}-${Date.now()}`
+      `${username}-live`
   );
 }
 
@@ -362,8 +363,13 @@ async function checkMember(channel, member) {
       return;
     }
 
-    if (previous.isLive && previous.liveId === live.liveId) {
-      console.log(`[still live] @${member.username} (${live.liveId})`);
+    if (previous.isLive) {
+      const liveIdNote =
+        previous.liveId === live.liveId
+          ? live.liveId
+          : `${previous.liveId || "unknown"} -> ${live.liveId || "unknown"}`;
+      state.set(member.username, { isLive: true, liveId: live.liveId });
+      console.log(`[still live] @${member.username} (${liveIdNote})`);
       return;
     }
 
@@ -393,20 +399,31 @@ async function resolveNotificationChannel(client) {
 }
 
 async function checkAllMembers(client) {
-  const channel = await resolveNotificationChannel(client);
-  const members = loadMembers();
-
-  if (!channel || members.length === 0) {
-    if (members.length === 0) {
-      console.log("No TikTok members configured. Use /addmember or /addmembers.");
-    }
+  if (checkAllMembersInProgress) {
+    console.log("Previous TikTok LIVE check is still running. Skipping this tick.");
     return;
   }
 
-  console.log(`Checking ${members.length} TikTok account(s)...`);
+  checkAllMembersInProgress = true;
 
-  for (const member of members) {
-    await checkMember(channel, member);
+  try {
+    const channel = await resolveNotificationChannel(client);
+    const members = loadMembers();
+
+    if (!channel || members.length === 0) {
+      if (members.length === 0) {
+        console.log("No TikTok members configured. Use /addmember or /addmembers.");
+      }
+      return;
+    }
+
+    console.log(`Checking ${members.length} TikTok account(s)...`);
+
+    for (const member of members) {
+      await checkMember(channel, member);
+    }
+  } finally {
+    checkAllMembersInProgress = false;
   }
 }
 

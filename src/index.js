@@ -19,6 +19,10 @@ const CHECK_INTERVAL_SECONDS = Math.max(
 
 const MEMBERS_PATH = path.join(process.cwd(), "members.json");
 const CONFIG_PATH = path.join(process.cwd(), "config.json");
+const NOTIFICATION_STATE_PATH = path.join(
+  process.cwd(),
+  "notification-state.json"
+);
 
 const CREATOR_AUTOCOMPLETE_USERNAMES = [
   "randomrapid",
@@ -71,6 +75,10 @@ function cleanUsername(username) {
   return String(username || "")
     .trim()
     .replace(/^@/, "");
+}
+
+function getMemberKey(username) {
+  return cleanUsername(username).toLowerCase();
 }
 
 function readJsonFile(filePath, fallback) {
@@ -136,6 +144,40 @@ function saveConfig(config) {
   });
 }
 
+function loadNotificationState() {
+  const savedState = readJsonFile(NOTIFICATION_STATE_PATH, {});
+  return savedState && typeof savedState === "object" ? savedState : {};
+}
+
+function saveNotificationState() {
+  writeJsonFile(
+    NOTIFICATION_STATE_PATH,
+    Object.fromEntries([...state.entries()].sort(([a], [b]) => a.localeCompare(b)))
+  );
+}
+
+function hydrateNotificationState() {
+  state.clear();
+
+  for (const [username, memberState] of Object.entries(loadNotificationState())) {
+    if (memberState && typeof memberState === "object") {
+      state.set(getMemberKey(username), {
+        isLive: Boolean(memberState.isLive),
+        liveId: memberState.liveId || null,
+        updatedAt: memberState.updatedAt || null,
+      });
+    }
+  }
+}
+
+function setMemberLiveState(username, nextState) {
+  state.set(getMemberKey(username), {
+    ...nextState,
+    updatedAt: new Date().toISOString(),
+  });
+  saveNotificationState();
+}
+
 function ensureLocalFiles() {
   if (!fs.existsSync(MEMBERS_PATH)) {
     saveMembers([]);
@@ -145,6 +187,12 @@ function ensureLocalFiles() {
 
   if (!fs.existsSync(CONFIG_PATH)) {
     saveConfig({ channelId: process.env.DISCORD_CHANNEL_ID || null });
+  }
+
+  if (!fs.existsSync(NOTIFICATION_STATE_PATH)) {
+    saveNotificationState();
+  } else {
+    hydrateNotificationState();
   }
 }
 
@@ -185,7 +233,8 @@ function removeMember(username) {
   );
 
   saveMembers(remainingMembers);
-  state.delete(cleanedUsername);
+  state.delete(getMemberKey(cleanedUsername));
+  saveNotificationState();
 
   return remainingMembers;
 }
@@ -355,10 +404,10 @@ async function sendLiveNotification(channel, member, live) {
 async function checkMember(channel, member) {
   try {
     const live = await fetchLiveDetails(member);
-    const previous = state.get(member.username) || {};
+    const previous = state.get(getMemberKey(member.username)) || {};
 
     if (!live.isLive) {
-      state.set(member.username, { isLive: false, liveId: null });
+      setMemberLiveState(member.username, { isLive: false, liveId: null });
       console.log(`[offline] @${member.username}`);
       return;
     }
@@ -368,13 +417,13 @@ async function checkMember(channel, member) {
         previous.liveId === live.liveId
           ? live.liveId
           : `${previous.liveId || "unknown"} -> ${live.liveId || "unknown"}`;
-      state.set(member.username, { isLive: true, liveId: live.liveId });
+      setMemberLiveState(member.username, { isLive: true, liveId: live.liveId });
       console.log(`[still live] @${member.username} (${liveIdNote})`);
       return;
     }
 
     await sendLiveNotification(channel, member, live);
-    state.set(member.username, { isLive: true, liveId: live.liveId });
+    setMemberLiveState(member.username, { isLive: true, liveId: live.liveId });
     console.log(`[notified] @${member.username} (${live.liveId})`);
   } catch (error) {
     console.error(`[error] @${member.username}:`, error.message);

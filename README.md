@@ -87,7 +87,7 @@ npm start
 
 The project asks Railway for Node 22+ through `package.json`.
 
-For production on Railway, you will need persistence for `config.json` and `members.json` if you want command changes to survive redeploys. The quickest option is a Railway volume mounted to the app directory. A later database-backed config store would also work cleanly.
+For production on Railway, attach a volume to this service mounted at `/data` and set `DATA_DIR=/data`. The bot stores `config.json`, `members.json` and `notification-state.json` there. It also recognizes Railway's `RAILWAY_VOLUME_MOUNT_PATH`. Deploy this updated code before using the new path. Existing files in the working directory are copied on first startup only when no destination file exists; existing volume data is never overwritten. Back up existing runtime files before replacing an older deployment, since files outside a volume may be lost on redeploy.
 
 ## Local Member Storage
 
@@ -102,7 +102,7 @@ TikTok members are stored in `members.json` and managed with `/addmember`, `/add
 ]
 ```
 
-On Railway later, keep `members.json` and `config.json` on persistent storage, such as a Railway volume mounted to the app directory, so command changes survive redeploys.
+On Railway, use this service's own volume mounted at `/data`, with `DATA_DIR=/data`, so command changes survive redeploys. Keep one running instance per bot. Local runs without a data-directory setting continue to use the working directory.
 
 ## Notes
 

@@ -17,10 +17,13 @@ const CHECK_INTERVAL_SECONDS = Math.max(
   30
 );
 
-const MEMBERS_PATH = path.join(process.cwd(), "members.json");
-const CONFIG_PATH = path.join(process.cwd(), "config.json");
+const DATA_DIR = path.resolve(
+  process.env.DATA_DIR || process.env.RAILWAY_VOLUME_MOUNT_PATH || process.cwd()
+);
+const MEMBERS_PATH = path.join(DATA_DIR, "members.json");
+const CONFIG_PATH = path.join(DATA_DIR, "config.json");
 const NOTIFICATION_STATE_PATH = path.join(
-  process.cwd(),
+  DATA_DIR,
   "notification-state.json"
 );
 
@@ -179,6 +182,17 @@ function setMemberLiveState(username, nextState) {
 }
 
 function ensureLocalFiles() {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  // Preserve existing file-based configuration on the first switch to a volume.
+  if (DATA_DIR !== process.cwd()) {
+    for (const filename of ["members.json", "config.json", "notification-state.json"]) {
+      const source = path.join(process.cwd(), filename);
+      const destination = path.join(DATA_DIR, filename);
+      if (fs.existsSync(source) && !fs.existsSync(destination)) {
+        fs.copyFileSync(source, destination, fs.constants.COPYFILE_EXCL);
+      }
+    }
+  }
   if (!fs.existsSync(MEMBERS_PATH)) {
     saveMembers([]);
   } else {

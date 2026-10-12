@@ -65,7 +65,7 @@ The bot only needs the `Guilds` intent.
 - `/listmembers` - shows the current tracked member list.
 - `/checknow` - runs a LIVE check immediately.
 
-Commands require the Discord `Manage Server` permission.
+Commands and autocomplete require Discord Administrator permission or a role named **Bot Controller** (case insensitive). Manage Server alone does not grant access. Commands use an application permission check so Bot Controllers need no additional server permissions. To hide commands from other members, restrict this application to Administrator and Bot Controller in Server Settings > Integrations, leaving the Support bot available to everyone. Restart the bot to sync command registration after deploying changes.
 
 ## Railway Deployment
 

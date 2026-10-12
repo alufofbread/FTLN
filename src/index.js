@@ -11,6 +11,7 @@ const {
   SlashCommandBuilder,
 } = require("discord.js");
 const { TikTokLiveConnection } = require("tiktok-live-connector");
+const { canUseBot } = require("./permissions");
 
 const CHECK_INTERVAL_SECONDS = Math.max(
   Number.parseInt(process.env.CHECK_INTERVAL_SECONDS || "60", 10),
@@ -495,7 +496,7 @@ function getCommands() {
     new SlashCommandBuilder()
       .setName("setchannel")
       .setDescription("Set the Discord channel that receives TikTok LIVE notifications.")
-      .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+      .setDefaultMemberPermissions(null)
       .addChannelOption((option) =>
         option
           .setName("channel")
@@ -509,7 +510,7 @@ function getCommands() {
     new SlashCommandBuilder()
       .setName("addmember")
       .setDescription("Add or update one TikTok member.")
-      .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+      .setDefaultMemberPermissions(null)
       .addStringOption((option) =>
         option
           .setName("username")
@@ -526,7 +527,7 @@ function getCommands() {
     new SlashCommandBuilder()
       .setName("addmembers")
       .setDescription("Add multiple TikTok members at once.")
-      .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+      .setDefaultMemberPermissions(null)
       .addStringOption((option) =>
         option
           .setName("members")
@@ -536,7 +537,7 @@ function getCommands() {
     new SlashCommandBuilder()
       .setName("removemember")
       .setDescription("Remove a TikTok member.")
-      .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+      .setDefaultMemberPermissions(null)
       .addStringOption((option) =>
         option
           .setName("username")
@@ -547,11 +548,11 @@ function getCommands() {
     new SlashCommandBuilder()
       .setName("listmembers")
       .setDescription("List configured TikTok members.")
-      .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+      .setDefaultMemberPermissions(null),
     new SlashCommandBuilder()
       .setName("checknow")
       .setDescription("Run a TikTok LIVE check immediately.")
-      .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+      .setDefaultMemberPermissions(null),
   ].map((command) => command.toJSON());
 }
 
@@ -570,6 +571,18 @@ async function registerCommands(client) {
 }
 
 async function handleInteraction(interaction, client) {
+  if (!interaction.isAutocomplete() && !interaction.isChatInputCommand()) return;
+  if (!canUseBot(interaction, PermissionFlagsBits.Administrator)) {
+    if (interaction.isAutocomplete()) {
+      await interaction.respond([]);
+    } else {
+      await interaction.reply({
+        content: "You need Administrator permission or the Bot Controller role to use this bot.",
+        ephemeral: true,
+      });
+    }
+    return;
+  }
   if (interaction.isAutocomplete()) {
     const focusedOption = interaction.options.getFocused(true);
 

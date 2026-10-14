@@ -12,6 +12,7 @@ const {
 } = require("discord.js");
 const { TikTokLiveConnection } = require("tiktok-live-connector");
 const { canUseBot } = require("./permissions");
+const { AgencyVideos } = require("./agency-videos");
 
 const CHECK_INTERVAL_SECONDS = Math.max(
   Number.parseInt(process.env.CHECK_INTERVAL_SECONDS || "60", 10),
@@ -134,6 +135,7 @@ function loadConfig() {
   const config = readJsonFile(CONFIG_PATH, {});
 
   return {
+    videoChannelId: config.videoChannelId || process.env.AGENCY_VIDEO_CHANNEL_ID || null,
     channelId:
       config.channelId ||
       process.env.DISCORD_CHANNEL_ID ||
@@ -494,6 +496,12 @@ async function checkAllMembers(client) {
 function getCommands() {
   return [
     new SlashCommandBuilder()
+      .setName('setvideochannel')
+      .setDescription('Set the channel for new @aetheragencytt videos only.')
+      .setDefaultMemberPermissions(null)
+      .addChannelOption(option => option.setName('channel').setDescription('Agency video alerts channel')
+        .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement).setRequired(true)),
+    new SlashCommandBuilder()
       .setName("setchannel")
       .setDescription("Set the Discord channel that receives TikTok LIVE notifications.")
       .setDefaultMemberPermissions(null)
@@ -617,6 +625,13 @@ async function handleInteraction(interaction, client) {
     return;
   }
 
+  if (interaction.commandName === 'setvideochannel') {
+    const channel = interaction.options.getChannel('channel', true);
+    saveConfig({ videoChannelId: channel.id });
+    await interaction.reply({ content: `New @aetheragencytt video alerts will be sent to ${channel}. TikTok video API authorisation must be configured.`, ephemeral: true });
+    return;
+  }
+
   if (interaction.commandName === "addmember") {
     const username = cleanUsername(interaction.options.getString("username", true));
     const displayName =
@@ -688,10 +703,15 @@ async function main() {
   const client = new Client({
     intents: [GatewayIntentBits.Guilds],
   });
+  const agencyVideos = new AgencyVideos({ dataDir: DATA_DIR, loadConfig });
+  const checkAgencyVideos = () => agencyVideos.check(client).catch(error => console.error('[agency videos]', error.message));
 
   client.once("ready", async () => {
     console.log(`FT Notifier logged in as ${client.user.tag}`);
     await registerCommands(client);
+
+    await checkAgencyVideos();
+    setInterval(checkAgencyVideos, CHECK_INTERVAL_SECONDS * 1000);
 
     await checkAllMembers(client);
     setInterval(

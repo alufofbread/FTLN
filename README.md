@@ -106,6 +106,16 @@ On Railway, use this service's own volume mounted at `/data`, with `DATA_DIR=/da
 
 ## Notes
 
+### Agency video uploads
+
+`/setvideochannel channel:#agency-videos` sets a separate destination for new videos from **@aetheragencytt only**. The member LIVE watchlist is never used for video alerts. This feature remains inactive until a video channel and TikTok authorisation are configured.
+
+After TikTok approves your application for Login Kit and Display API, authorise the **agency account** with `video.list`. Set `AGENCY_TIKTOK_CLIENT_KEY`, `AGENCY_TIKTOK_CLIENT_SECRET`, and `AGENCY_TIKTOK_REFRESH_TOKEN` in the deployment environment. Do not put credentials in Discord. An `AGENCY_TIKTOK_ACCESS_TOKEN` can be used for short-lived testing instead. See [TikTok Display API setup](https://developers.tiktok.com/docs/en/display-api-get-started).
+
+The notifier checks the authorised video list at the existing check interval, validates every video URL against `@aetheragencytt`, and refuses feeds from other accounts. Its first successful check quietly records existing videos; subsequent checks announce new uploads with a link and caption. Failed API calls preserve state; failed Discord sends retry. Existing messages are recovered by a video-specific footer after an interrupted send. Give the bot Read Message History in the video destination for this recovery.
+
+Keep `agency-video-state.json` and `agency-video-token.json` on the existing persistent volume. The token file contains credentials and must remain private. Refresh tokens rotate automatically; if TikTok revokes or expires authorisation, reconnect the agency account. Keep one running bot instance. Run `node --test src/agency-videos.test.js` to test account filtering and delivery without TikTok credentials.
+
 TikTok does not provide a stable public LIVE API for this use case. This project uses `tiktok-live-connector`, which relies on TikTok's web data and may need updates if TikTok changes how LIVE pages work.
 
 If anonymous TikTok checks start failing, add `TIKTOK_SESSION_ID` and `TIKTOK_TT_TARGET_IDC` from a TikTok browser session as Railway variables. Keep them private.

@@ -3,5 +3,8 @@ node_modules/
 config.json
 members.json
 notification-state.json
+agency-video-state.json
+agency-video-token.json
+agency-video-*.json.tmp
 npm-debug.log*
 .DS_Store

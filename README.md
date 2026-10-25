@@ -64,6 +64,18 @@ The bot only needs the `Guilds` intent.
 - `/removemember` - removes one TikTok member.
 - `/listmembers` - shows the current tracked member list.
 - `/checknow` - runs a LIVE check immediately.
+- `/syncmembers` - refreshes the agency LIVE watchlist immediately.
+- `/watchliststatus` - shows the last successful roster sync, errors and manual override counts.
+
+### Automatic agency watchlist
+
+The notifier syncs the Aether roster every 60 seconds when `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are configured. The TVA report worker maintains the private `agency-live-watchlist/membership.json` feed, including TikTok's explicit departure notices. New roster members are added, and reported departures or removed/disabled roster accounts leave the automatic watchlist. This is agency roster/report synchronisation, not a TikTok membership API or an OAuth profile scope.
+
+`/removemember` creates a persistent exclusion so the next sync does not add the creator back. `/addmember` clears that exclusion and can manually restore a creator if needed. A later agency departure clears an earlier manual pin for that creator. Manual entries unrelated to the roster are preserved. An explicit manual re-add after a departure stays until another relevant membership change or manual removal.
+
+`/listmembers page:2` pages through the entire list. `/watchliststatus` exposes sync health without showing credentials. A failed or invalid roster response preserves the last saved list; a valid empty roster removes automatic members while keeping unrelated manual entries. No selected alert channel or agency-video setting is changed by roster sync.
+
+Keep `watchlist-state.json` on the existing `/data` volume. It is the authoritative state; `members.json` remains a compatibility projection. On first startup the existing member file is backed up as `members.json.before-roster-sync`. Initial roster matches are adopted as automatic members so they can be removed correctly if they leave later. Run `npm test` for migration, override, restart, departure, rename, outage and private-feed checks.
 
 Commands and autocomplete require Discord Administrator permission or a role named **Bot Controller** (case insensitive). Manage Server alone does not grant access. Commands use an application permission check so Bot Controllers need no additional server permissions. To hide commands from other members, restrict this application to Administrator and Bot Controller in Server Settings > Integrations, leaving the Support bot available to everyone. Restart the bot to sync command registration after deploying changes.
 

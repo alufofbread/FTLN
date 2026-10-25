@@ -13,6 +13,8 @@ const {
 const { TikTokLiveConnection } = require("tiktok-live-connector");
 const { canUseBot } = require("./permissions");
 const { AgencyVideos } = require("./agency-videos");
+const { Watchlist } = require("./watchlist");
+let watchlist;
 
 const CHECK_INTERVAL_SECONDS = Math.max(
   Number.parseInt(process.env.CHECK_INTERVAL_SECONDS || "60", 10),
@@ -108,6 +110,7 @@ function normalizeMember(member) {
 }
 
 function loadMembers() {
+  if (watchlist) return watchlist.members();
   const members = readJsonFile(MEMBERS_PATH, []);
   return members
     .map(normalizeMember)
@@ -229,27 +232,12 @@ function parseMemberEntries(entries) {
 }
 
 function upsertMembers(nextMembers) {
-  const membersByUsername = new Map(
-    loadMembers().map((member) => [member.username.toLowerCase(), member])
-  );
-
-  for (const member of nextMembers) {
-    const normalized = normalizeMember(member);
-    if (normalized.username) {
-      membersByUsername.set(normalized.username.toLowerCase(), normalized);
-    }
-  }
-
-  return saveMembers([...membersByUsername.values()]);
+  return watchlist.add(nextMembers);
 }
 
 function removeMember(username) {
   const cleanedUsername = cleanUsername(username);
-  const remainingMembers = loadMembers().filter(
-    (member) => member.username.toLowerCase() !== cleanedUsername.toLowerCase()
-  );
-
-  saveMembers(remainingMembers);
+  const remainingMembers = watchlist.remove(cleanedUsername);
   state.delete(getMemberKey(cleanedUsername));
   saveNotificationState();
 
@@ -280,10 +268,11 @@ function getCreatorAutocompleteChoices(focusedValue, mode = "add") {
   const trackedUsernames = new Set(
     trackedMembers.map((member) => member.username.toLowerCase())
   );
+  const candidates = [...new Set([...CREATOR_AUTOCOMPLETE_USERNAMES, ...(watchlist?.state.roster || []).map(m => m.username)])];
   const usernames =
     mode === "remove"
       ? trackedMembers.map((member) => member.username)
-      : CREATOR_AUTOCOMPLETE_USERNAMES.filter(
+      : candidates.filter(
           (username) => !trackedUsernames.has(username.toLowerCase())
         );
 
@@ -421,6 +410,7 @@ async function sendLiveNotification(channel, member, live) {
 async function checkMember(channel, member) {
   try {
     const live = await fetchLiveDetails(member);
+    if (!loadMembers().some(row => getMemberKey(row.username) === getMemberKey(member.username))) return;
     const previous = state.get(getMemberKey(member.username)) || {};
 
     if (!live.isLive) {
@@ -439,6 +429,7 @@ async function checkMember(channel, member) {
       return;
     }
 
+    if (!loadMembers().some(row => getMemberKey(row.username) === getMemberKey(member.username))) return;
     await sendLiveNotification(channel, member, live);
     setMemberLiveState(member.username, { isLive: true, liveId: live.liveId });
     console.log(`[notified] @${member.username} (${live.liveId})`);
@@ -486,6 +477,7 @@ async function checkAllMembers(client) {
     console.log(`Checking ${members.length} TikTok account(s)...`);
 
     for (const member of members) {
+      if (!loadMembers().some(row => getMemberKey(row.username) === getMemberKey(member.username))) continue;
       await checkMember(channel, member);
     }
   } finally {
@@ -556,7 +548,10 @@ function getCommands() {
     new SlashCommandBuilder()
       .setName("listmembers")
       .setDescription("List configured TikTok members.")
-      .setDefaultMemberPermissions(null),
+      .setDefaultMemberPermissions(null)
+      .addIntegerOption(option => option.setName("page").setDescription("Watchlist page").setMinValue(1).setMaxValue(1000)),
+    new SlashCommandBuilder().setName("syncmembers").setDescription("Sync the agency LIVE watchlist now.").setDefaultMemberPermissions(null),
+    new SlashCommandBuilder().setName("watchliststatus").setDescription("Show agency sync health and manual override counts.").setDefaultMemberPermissions(null),
     new SlashCommandBuilder()
       .setName("checknow")
       .setDescription("Run a TikTok LIVE check immediately.")
@@ -637,9 +632,10 @@ async function handleInteraction(interaction, client) {
     const displayName =
       interaction.options.getString("display_name")?.trim() || username;
 
-    const members = upsertMembers([{ username, displayName }]);
+    upsertMembers([{ username, displayName }]);
     await interaction.reply({
-      content: `@${username}, added to the live watchlist.`,
+      content: `@${username} added to the LIVE watchlist. Any manual exclusion was cleared.`,
+      ephemeral: true,
     });
     return;
   }
@@ -674,14 +670,16 @@ async function handleInteraction(interaction, client) {
     await interaction.reply({
       content: removed
         ? `Removed @${username}. Tracking ${members.length} member(s).`
-        : `@${username} was not in the member list.`,
+        : `@${username} was not currently tracked. A manual exclusion was saved so agency sync will not add them.`,
       ephemeral: true,
     });
     return;
   }
 
   if (interaction.commandName === "listmembers") {
-    const membersText = formatMembers(loadMembers());
+    const members = loadMembers(), pages = Math.max(1, Math.ceil(members.length / 15));
+    const page = Math.min(interaction.options.getInteger("page") || 1, pages);
+    const membersText = `LIVE watchlist: ${members.length} tracked | page ${page}/${pages}\n` + formatMembers(members.slice((page-1)*15, page*15));
     await interaction.reply({
       content: membersText.slice(0, 1900),
       ephemeral: true,
@@ -689,6 +687,17 @@ async function handleInteraction(interaction, client) {
     return;
   }
 
+  if (interaction.commandName === "syncmembers") {
+    await interaction.deferReply({ ephemeral: true });
+    const result = await syncAgencyMembers();
+    await interaction.editReply(result.ok ? `Agency watchlist synced. Tracking ${result.tracked} members. Manual exclusions are preserved.` : `Sync failed: ${result.error} The saved watchlist is unchanged.`);
+    return;
+  }
+  if (interaction.commandName === "watchliststatus") {
+    const summary = watchlist.summary();
+    await interaction.reply({ content: `Tracking: ${summary.tracked} | Agency: ${summary.agency} | Manual: ${summary.manual} | Excluded: ${summary.excluded}\nLast successful sync: ${summary.lastSuccess || 'Never'}\nStatus: ${summary.error || 'Healthy'}`, ephemeral: true });
+    return;
+  }
   if (interaction.commandName === "checknow") {
     await interaction.deferReply({ ephemeral: true });
     await checkAllMembers(client);
@@ -696,9 +705,22 @@ async function handleInteraction(interaction, client) {
   }
 }
 
+async function syncAgencyMembers() {
+  const before = new Set(loadMembers().map(m => getMemberKey(m.username)));
+  const result = await watchlist.sync();
+  if (result.ok) {
+    const current = new Set(loadMembers().map(m => getMemberKey(m.username)));
+    for (const username of before) if (!current.has(username)) state.delete(username);
+    saveNotificationState();
+    console.log(`[agency roster] synced; agency=${result.agency}, tracked=${result.tracked}`);
+  } else console.warn('[agency roster] ' + result.error + ' Keeping the saved watchlist.');
+  return result;
+}
+
 async function main() {
   const token = requiredEnv("DISCORD_TOKEN");
   ensureLocalFiles();
+  watchlist = new Watchlist({ dataDir: DATA_DIR });
 
   const client = new Client({
     intents: [GatewayIntentBits.Guilds],
@@ -710,6 +732,8 @@ async function main() {
     console.log(`FT Notifier logged in as ${client.user.tag}`);
     await registerCommands(client);
 
+    await syncAgencyMembers();
+    setInterval(() => syncAgencyMembers().catch(() => console.error("[agency roster] Sync failed; saved list retained.")), 60000);
     await checkAgencyVideos();
     setInterval(checkAgencyVideos, CHECK_INTERVAL_SECONDS * 1000);
 
@@ -742,7 +766,8 @@ async function main() {
   await client.login(token);
 }
 
-main().catch((error) => {
+if (require.main === module) main().catch((error) => {
   console.error(error);
   process.exit(1);
 });
+module.exports = { getCommands };

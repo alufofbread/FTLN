@@ -8,3 +8,8 @@ agency-video-token.json
 agency-video-*.json.tmp
 npm-debug.log*
 .DS_Store
+
+watchlist-state.json
+watchlist-state.json.tmp
+members.json.tmp
+members.json.before-roster-sync

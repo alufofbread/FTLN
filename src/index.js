@@ -677,9 +677,9 @@ async function handleInteraction(interaction, client) {
   }
 
   if (interaction.commandName === "listmembers") {
-    const members = loadMembers(), pages = Math.max(1, Math.ceil(members.length / 15));
+    const members = loadMembers(), pages = Math.max(1, Math.ceil(members.length / 10));
     const page = Math.min(interaction.options.getInteger("page") || 1, pages);
-    const membersText = `LIVE watchlist: ${members.length} tracked | page ${page}/${pages}\n` + formatMembers(members.slice((page-1)*15, page*15));
+    const membersText = `LIVE watchlist: ${members.length} tracked | page ${page}/${pages}\n` + formatMembers(members.slice((page-1)*10, page*10));
     await interaction.reply({
       content: membersText.slice(0, 1900),
       ephemeral: true,
